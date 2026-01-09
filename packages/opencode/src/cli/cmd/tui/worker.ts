@@ -150,10 +150,10 @@ export const rpc = {
     const result = writeHeapSnapshot("server.heapsnapshot")
     return result
   },
-  async server(input: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
+  async server(input: { port: number; hostname: string; mdns?: boolean; cors?: string[]; basePath?: string }) {
     if (server) await server.stop(true)
     server = await Server.listen(input)
-    return { url: server.url.toString() }
+    return { url: Server.url().toString() }
   },
   async checkUpgrade(input: { directory: string }) {
     await Instance.provide({
