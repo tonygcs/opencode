@@ -74,7 +74,9 @@ declare global {
       updaterEnabled?: boolean
       deepLinks?: string[]
       wsl?: boolean
+      serverPassword?: string
     }
+    __OPENCODE_BASE_PATH__?: string
     api?: {
       setTitlebar?: (theme: { mode: "light" | "dark" }) => Promise<void>
     }
@@ -281,6 +283,8 @@ export function AppInterface(props: {
   router?: Component<BaseRouterProps>
   disableHealthCheck?: boolean
 }) {
+  const basePath = window.__OPENCODE_BASE_PATH__ || ""
+
   return (
     <ServerProvider
       defaultServer={props.defaultServer}
@@ -293,6 +297,7 @@ export function AppInterface(props: {
             <GlobalSyncProvider>
               <Dynamic
                 component={props.router ?? Router}
+                base={basePath}
                 root={(routerProps) => <RouterRoot appChildren={props.children}>{routerProps.children}</RouterRoot>}
               >
                 <Route path="/" component={HomeRoute} />

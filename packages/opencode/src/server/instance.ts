@@ -30,6 +30,8 @@ import { ProviderRoutes } from "./routes/provider"
 import { EventRoutes } from "./routes/event"
 import { errorHandler } from "./middleware"
 import { getMimeType } from "hono/utils/mime"
+import { rewriteHtmlForBasePath, rewriteJsForBasePath, rewriteCssForBasePath } from "../util/base-path"
+import { Server } from "./server"
 
 const log = Log.create({ service: "server" })
 
@@ -299,14 +301,53 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket, app: Hono = new Hono()
           return c.json({ error: "Not Found" }, 404)
         }
       } else {
-        const response = await proxy(`https://app.opencode.ai${path}`, {
+        const basePath = Server.basePath()
+
+        // Strip basePath from the request path before proxying
+        let proxyPath = path
+        if (basePath && proxyPath.startsWith(basePath)) {
+          proxyPath = proxyPath.slice(basePath.length) || "/"
+        }
+
+        const response = await proxy(`https://app.opencode.ai${proxyPath}`, {
           ...c.req,
           headers: {
             ...c.req.raw.headers,
             host: "app.opencode.ai",
           },
         })
-        const match = response.headers.get("content-type")?.includes("text/html")
+
+        // Rewrite content for basePath support
+        const contentType = response.headers.get("content-type") || ""
+
+        if (basePath && contentType.includes("text/html")) {
+          const html = rewriteHtmlForBasePath(await response.text(), basePath)
+          return new Response(html, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          })
+        }
+
+        if (basePath && (contentType.includes("javascript") || proxyPath.endsWith(".js"))) {
+          const js = rewriteJsForBasePath(await response.text(), basePath)
+          return new Response(js, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          })
+        }
+
+        if (basePath && (contentType.includes("text/css") || proxyPath.endsWith(".css"))) {
+          const css = rewriteCssForBasePath(await response.text(), basePath)
+          return new Response(css, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          })
+        }
+
+        const match = contentType.includes("text/html")
           ? (await response.clone().text()).match(
               /<script\b(?![^>]*\bsrc\s*=)[^>]*\bid=(['"])oc-theme-preload-script\1[^>]*>([\s\S]*?)<\/script>/i,
             )

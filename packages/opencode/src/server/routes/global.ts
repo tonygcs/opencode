@@ -12,6 +12,7 @@ import { Log } from "../../util/log"
 import { lazy } from "../../util/lazy"
 import { Config } from "../../config/config"
 import { errors } from "../error"
+import { Server } from "../server"
 
 const log = Log.create({ service: "server" })
 
@@ -80,14 +81,14 @@ export const GlobalRoutes = lazy(() =>
             description: "Health information",
             content: {
               "application/json": {
-                schema: resolver(z.object({ healthy: z.literal(true), version: z.string() })),
+                schema: resolver(z.object({ healthy: z.literal(true), version: z.string(), basePath: z.string().optional() })),
               },
             },
           },
         },
       }),
       async (c) => {
-        return c.json({ healthy: true, version: Installation.VERSION })
+        return c.json({ healthy: true, version: Installation.VERSION, basePath: Server.basePath() || undefined })
       },
     )
     .get(
