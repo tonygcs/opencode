@@ -42,6 +42,22 @@ export namespace Server {
     return false
   }
 
+  let _url: URL | undefined
+  let _basePath: string = ""
+  let _corsWhitelist: string[] = []
+
+  export function url(): URL {
+    const base = _url ?? new URL("http://localhost:4096")
+    if (_basePath) {
+      return new URL(_basePath + "/", base)
+    }
+    return base
+  }
+
+  export function basePath(): string {
+    return _basePath
+  }
+
   export const Default = lazy(() => create({}))
 
   export function ControlPlaneRoutes(upgrade: UpgradeWebSocket, app = new Hono(), opts?: { cors?: string[] }): Hono {
@@ -271,19 +287,37 @@ export namespace Server {
     return result
   }
 
-  export let url: URL
-
   export async function listen(opts: {
     port: number
     hostname: string
     mdns?: boolean
     mdnsDomain?: string
     cors?: string[]
+    basePath?: string
   }): Promise<Listener> {
+    _corsWhitelist = opts.cors ?? []
+
+    // Normalize basePath: ensure leading slash, remove trailing slash
+    const rawBasePath = opts.basePath ?? "/"
+    _basePath =
+      rawBasePath === "/"
+        ? ""
+        : (rawBasePath.startsWith("/") ? rawBasePath : `/${rawBasePath}`).replace(/\/+$/, "")
+
     const built = create(opts)
+    let appToServe = built.app
+
+    if (_basePath) {
+      const baseApp = new Hono()
+      baseApp.route(_basePath, built.app)
+      // Also mount at root level to support reverse proxies that strip the basePath
+      baseApp.route("/", built.app)
+      appToServe = baseApp
+    }
+
     const start = (port: number) =>
       new Promise<ServerType>((resolve, reject) => {
-        const server = createAdaptorServer({ fetch: built.app.fetch })
+        const server = createAdaptorServer({ fetch: appToServe.fetch })
         built.ws.injectWebSocket(server)
         const fail = (err: Error) => {
           cleanup()
@@ -311,7 +345,7 @@ export namespace Server {
     const next = new URL("http://localhost")
     next.hostname = opts.hostname
     next.port = String(addr.port)
-    url = next
+    _url = next
 
     const mdns =
       opts.mdns &&
