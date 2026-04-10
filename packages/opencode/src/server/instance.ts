@@ -284,7 +284,14 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket, app: Hono = new Hono()
     )
     .all("/*", async (c) => {
       const embeddedWebUI = await embeddedUIPromise
-      const path = c.req.path
+      const basePath = Server.basePath()
+
+      // c.req.path is always the full path even when mounted via .route(),
+      // so strip the basePath prefix before any lookup or proxying.
+      let path = c.req.path
+      if (basePath && path.startsWith(basePath)) {
+        path = path.slice(basePath.length) || "/"
+      }
 
       if (embeddedWebUI) {
         const match = embeddedWebUI[path.replace(/^\//, "")] ?? embeddedWebUI["index.html"] ?? null
@@ -292,6 +299,26 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket, app: Hono = new Hono()
 
         if (await fs.exists(match)) {
           const mime = getMimeType(match) ?? "text/plain"
+          const basePath = Server.basePath()
+
+          if (basePath && mime.startsWith("text/html")) {
+            const html = rewriteHtmlForBasePath(await fs.readFile(match, "utf-8"), basePath)
+            c.header("Content-Type", mime)
+            return c.body(html)
+          }
+
+          if (basePath && (mime.includes("javascript") || path.endsWith(".js"))) {
+            const js = rewriteJsForBasePath(await fs.readFile(match, "utf-8"), basePath)
+            c.header("Content-Type", mime)
+            return c.body(js)
+          }
+
+          if (basePath && (mime.includes("text/css") || path.endsWith(".css"))) {
+            const css = rewriteCssForBasePath(await fs.readFile(match, "utf-8"), basePath)
+            c.header("Content-Type", mime)
+            return c.body(css)
+          }
+
           c.header("Content-Type", mime)
           if (mime.startsWith("text/html")) {
             c.header("Content-Security-Policy", DEFAULT_CSP)

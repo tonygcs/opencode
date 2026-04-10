@@ -9,6 +9,7 @@ import { Filesystem } from "@/util/filesystem"
 import { Instance } from "@/project/instance"
 import { InstanceBootstrap } from "@/project/bootstrap"
 import { InstanceRoutes } from "./instance"
+import { Server } from "./server"
 
 type Rule = { method?: string; path: string; exact?: boolean; action: "local" | "forward" }
 
@@ -41,6 +42,16 @@ export function WorkspaceRouterMiddleware(upgrade: UpgradeWebSocket): Middleware
       })(),
     )
 
+    // c.req.path always returns the full path in Hono (even inside sub-apps
+    // mounted via .route()). Strip the basePath from the URL so InstanceRoutes
+    // can match its own routes (e.g. /provider, /path, /project).
+    const basePath = Server.basePath()
+    const rawUrl = new URL(c.req.raw.url)
+    if (basePath && rawUrl.pathname.startsWith(basePath)) {
+      rawUrl.pathname = rawUrl.pathname.slice(basePath.length) || "/"
+    }
+    const strippedRequest = new Request(rawUrl.toString(), c.req.raw)
+
     const url = new URL(c.req.url)
     const workspaceParam = url.searchParams.get("workspace") || c.req.header("x-opencode-workspace")
 
@@ -53,7 +64,7 @@ export function WorkspaceRouterMiddleware(upgrade: UpgradeWebSocket): Middleware
         directory,
         init: InstanceBootstrap,
         async fn() {
-          return routes().fetch(c.req.raw, c.env)
+          return routes().fetch(strippedRequest, c.env)
         },
       })
     }
@@ -77,7 +88,7 @@ export function WorkspaceRouterMiddleware(upgrade: UpgradeWebSocket): Middleware
         directory: target.directory,
         init: InstanceBootstrap,
         async fn() {
-          return routes().fetch(c.req.raw, c.env)
+          return routes().fetch(strippedRequest, c.env)
         },
       })
     }
@@ -85,7 +96,7 @@ export function WorkspaceRouterMiddleware(upgrade: UpgradeWebSocket): Middleware
     if (local(c.req.method, url.pathname)) {
       // No instance provided because we are serving cached data; there
       // is no instance to work with
-      return routes().fetch(c.req.raw, c.env)
+      return routes().fetch(strippedRequest, c.env)
     }
 
     if (c.req.header("upgrade")?.toLowerCase() === "websocket") {

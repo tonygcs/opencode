@@ -98,9 +98,13 @@ export function rewriteJsForBasePath(js: string, basePath: string): string {
   )
 
   // Patch Vite's base path function to use our basePath instead of "/"
-  // The function looks like: function(t){return"/"+t}
-  // This handles all dynamic asset loading
-  result = result.replace(/function\(t\)\{return"\/"\+t\}/g, `function(t){return"${basePath}/"+t}`)
+  // The function looks like: function(e){return"/"+e}  (variable name varies by build)
+  // This handles all dynamic asset loading (modulepreload links)
+  result = result.replace(/function\(([a-z])\)\{return"\/"\+\1\}/g, (_, v) => `function(${v}){return"${basePath}/"+${v}}`)
+
+  // Rewrite hardcoded "/assets/..." paths in string literals
+  // These are used for fonts (inter, BlexMono, etc.) and audio files (staplebops, nope, etc.)
+  result = result.replace(/"\/assets\//g, `"${basePath}/assets/`)
 
   return result
 }
